@@ -85,7 +85,13 @@ jobs:
           printf '\nSource commit: %s\n' "$GITHUB_SHA" >> preview-volume/README.txt
           ln -s /Applications preview-volume/Applications
           ditto -c -k --sequesterRsrc --keepParent "$app" dist/AgentSessions-5.5-CodexAppPreview-arm64.zip
+          # hdiutil's automatic image sizing can under-allocate for framework
+          # bundles. Reserve explicit filesystem overhead before copying them.
+          payload_kb=$(du -sk preview-volume | awk '{print $1}')
+          image_kb=$((payload_kb * 2 + 131072))
+          df -h .
           hdiutil create -volname 'Agent Sessions Codex App Preview' \
+            -size "${image_kb}k" -fs HFS+ \
             -srcfolder preview-volume -ov -format UDZO \
             dist/AgentSessions-5.5-CodexAppPreview-arm64.dmg
           hdiutil verify dist/AgentSessions-5.5-CodexAppPreview-arm64.dmg
