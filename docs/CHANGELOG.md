@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Added **Open in Codex App** to the session context menu and toolbar. Local Codex threads can be handed to the installed desktop app without a Codex CLI installation. The app must use the same session store; side chats and records without a valid thread ID are excluded. End-to-end desktop navigation remains unverified.
+
 ## [5.5] - 2026-09-19
 
 ### Features

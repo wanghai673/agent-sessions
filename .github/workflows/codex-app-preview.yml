@@ -1,0 +1,114 @@
+name: Codex App preview
+
+on:
+  push:
+    branches: [codex/open-sessions-in-app]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.repository == 'wanghai673/agent-sessions'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify toolchain and localization
+        run: |
+          python3 scripts/check_xcode_version.py
+          python3 -m unittest scripts.tests.test_validate_localization_catalogs
+          python3 scripts/validate_localization_catalogs.py
+
+      - name: Run full test suite
+        run: |
+          set -o pipefail
+          ./scripts/xcode_test_stable.sh CODE_SIGNING_ALLOWED=NO > test.log 2>&1
+
+      - name: Record test results
+        if: always()
+        run: |
+          mkdir -p preview-results
+          bundle=$(find .deriveddata-tests/Logs/Test -maxdepth 1 -name '*.xcresult' -print -quit 2>/dev/null || true)
+          if [ -n "$bundle" ]; then
+            xcrun xcresulttool get test-results summary --path "$bundle" > preview-results/test-summary.json
+            cat preview-results/test-summary.json
+          fi
+          if [ -f test.log ]; then
+            cp test.log preview-results/test.log
+            tail -n 80 test.log
+          fi
+
+      - name: Build standalone preview
+        run: |
+          set -o pipefail
+          xcodebuild -project AgentSessions.xcodeproj -scheme AgentSessions \
+            -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .deriveddata-preview \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            build > build.log 2>&1
+          python3 scripts/validate_localization_catalogs.py \
+            --extraction-root .deriveddata-preview/Build/Intermediates.noindex/AgentSessions.build/Debug/AgentSessions.build/Objects-normal
+
+      - name: Package signed preview
+        run: |
+          mkdir -p dist preview-volume
+          app='preview-volume/Agent Sessions Codex App Preview.app'
+          ditto .deriveddata-preview/Build/Products/Debug/AgentSessions.app "$app"
+          # Keep the bundle identity required by AppRuntime.isHostedByTooling.
+          # Disable upstream updating only in this separately packaged preview.
+          /usr/libexec/PlistBuddy -c 'Set :SUEnableAutomaticChecks false' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :SUAutomaticallyUpdate false' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$app/Contents/Info.plist"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          test -z "$(find "$app" -name '*.xctest' -print -quit)"
+          lipo -archs "$app/Contents/MacOS/AgentSessions"
+          xcrun vtool -show-build "$app/Contents/MacOS/AgentSessions"
+          cat > preview-volume/README.txt <<'EOF'
+          Agent Sessions 5.5 — Codex App Preview (Apple Silicon, macOS 14+)
+
+          Drag Agent Sessions Codex App Preview.app into Applications.
+          Quit any other Agent Sessions copy before opening this preview.
+          Select a Codex session, then choose Open in Codex App from its
+          context menu or use the window icon in the toolbar.
+
+          This local test build is ad-hoc signed, not Apple-notarized.
+          It retains Agent Sessions' bundle identity and preferences.
+          Upstream automatic updates are disabled for this preview.
+          Codex App must use the same local session storage.
+          EOF
+          printf '\nSource commit: %s\n' "$GITHUB_SHA" >> preview-volume/README.txt
+          ln -s /Applications preview-volume/Applications
+          ditto -c -k --sequesterRsrc --keepParent "$app" dist/AgentSessions-5.5-CodexAppPreview-arm64.zip
+          hdiutil create -volname 'Agent Sessions Codex App Preview' \
+            -srcfolder preview-volume -ov -format UDZO \
+            dist/AgentSessions-5.5-CodexAppPreview-arm64.dmg
+          hdiutil verify dist/AgentSessions-5.5-CodexAppPreview-arm64.dmg
+          cp preview-volume/README.txt dist/README.txt
+          cp preview-results/test-summary.json dist/test-summary.json
+          (cd dist && shasum -a 256 *.dmg *.zip > SHA256SUMS)
+
+      - name: Upload installable preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-sessions-codex-app-preview-arm64
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-app-preview-validation
+          path: |
+            preview-results/
+            build.log
+          if-no-files-found: ignore
+          retention-days: 14
