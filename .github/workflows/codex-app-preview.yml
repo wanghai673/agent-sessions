@@ -76,6 +76,8 @@ jobs:
           Quit any other Agent Sessions copy before opening this preview.
           Select a Codex session, then choose Open in Codex App from its
           context menu or use the window icon in the toolbar.
+          Local Codex App sessions also use the live-status indicators:
+          green for working, amber for open and idle. The star is Saved.
 
           This local test build is ad-hoc signed, not Apple-notarized.
           It retains Agent Sessions' bundle identity and preferences.
