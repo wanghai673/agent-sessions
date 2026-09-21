@@ -74,8 +74,9 @@ jobs:
 
           Drag Agent Sessions Codex App Preview.app into Applications.
           Quit any other Agent Sessions copy before opening this preview.
-          Select a Codex session, then choose Open in Codex App from its
+          Select a Codex session, then choose Continue in Codex Desk from its
           context menu or use the window icon in the toolbar.
+          Codex rows no longer show work, desk, cli, or vsc surface badges.
           Local Codex App tasks show green while working. Completed and
           cached desktop threads have no live marker. The star is Saved.
 
